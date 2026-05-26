@@ -254,5 +254,15 @@ Trova almeno 15 cantieri REALI con dati precisi. Stato può essere: attivo, pian
     return {"cantieri": cantieri, "totale": len(cantieri)}
 
 # ── Serve frontend ────────────────────────────────────────────
+from fastapi.responses import HTMLResponse
+
+@app.get("/app", response_class=HTMLResponse)
+@app.get("/app/", response_class=HTMLResponse)
+async def frontend():
+    html_file = Path("frontend/index.html")
+    if html_file.exists():
+        return HTMLResponse(content=html_file.read_text())
+    return HTMLResponse(content="<h1>Frontend non trovato</h1>", status_code=404)
+
 if Path("frontend").exists():
-    app.mount("/", StaticFiles(directory="frontend", html=True), name="frontend")
+    app.mount("/static", StaticFiles(directory="frontend"), name="static")
