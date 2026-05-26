@@ -1,0 +1,452 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CantierTrack — Appalti & Cantieri Pubblici Italia</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@600;700&family=DM+Sans:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+:root{--bg:#0d0f12;--surface:#161920;--surface2:#1e2230;--border:#2a2f3d;--text:#e8eaf0;--muted:#6b7280;--blue:#4a9eff;--green:#2ecc71;--yellow:#f59e0b;--red:#e05c2a;--purple:#b06ef3;}
+*{box-sizing:border-box;margin:0;padding:0;}
+html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);font-family:'DM Sans',sans-serif;font-size:14px;}
+body{display:flex;flex-direction:column;}
+header{height:60px;background:var(--surface);border-bottom:1px solid var(--border);display:flex;align-items:center;padding:0 20px;gap:16px;flex-shrink:0;z-index:100;}
+.logo{font-family:'Syne',sans-serif;font-size:18px;font-weight:700;}.logo span{color:var(--yellow);}
+.logo-icon{width:32px;height:32px;background:var(--yellow);border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:16px;}
+.hstats{display:flex;gap:24px;flex:1;justify-content:center;}
+.hstat{text-align:center;}
+.hstat-val{font-family:'Syne',sans-serif;font-size:16px;font-weight:700;color:var(--yellow);}
+.hstat-lbl{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;}
+.header-btns{display:flex;gap:8px;}
+.btn{padding:7px 14px;border-radius:8px;border:none;cursor:pointer;font-family:'DM Sans',sans-serif;font-size:12px;font-weight:500;transition:all 0.15s;display:flex;align-items:center;gap:6px;}
+.btn-yellow{background:var(--yellow);color:#1a1000;}.btn-yellow:hover{background:#d97706;}
+.btn-outline{background:transparent;border:1px solid var(--border);color:var(--text);}.btn-outline:hover{border-color:var(--muted);}
+.btn-purple{background:rgba(176,110,243,0.15);border:1px solid rgba(176,110,243,0.3);color:var(--purple);}.btn-purple:hover{background:rgba(176,110,243,0.25);}
+.btn:disabled{opacity:0.5;cursor:not-allowed;}
+.app{display:flex;flex:1;overflow:hidden;}
+.sidebar{width:340px;background:var(--surface);border-right:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden;flex-shrink:0;}
+.main{flex:1;display:flex;flex-direction:column;overflow:hidden;}
+.search-wrap{padding:12px;border-bottom:1px solid var(--border);}
+.search-rel{position:relative;}
+.search-icon{position:absolute;left:10px;top:50%;transform:translateY(-50%);color:var(--muted);}
+.search-input{width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:8px 12px 8px 30px;border-radius:8px;font-family:'DM Sans',sans-serif;font-size:13px;outline:none;}
+.filters{padding:10px 12px;border-bottom:1px solid var(--border);display:flex;flex-wrap:wrap;gap:6px;}
+.pill{padding:4px 10px;border-radius:12px;border:1px solid var(--border);font-size:11px;cursor:pointer;color:var(--muted);background:transparent;transition:all 0.15s;}
+.pill.on{background:rgba(245,158,11,0.15);border-color:rgba(245,158,11,0.4);color:var(--yellow);}
+.list-header{padding:8px 12px;font-size:11px;color:var(--muted);display:flex;justify-content:space-between;border-bottom:1px solid var(--border);}
+.list{flex:1;overflow-y:auto;}
+.list::-webkit-scrollbar{width:4px;}.list::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px;}
+.card{padding:12px;border-bottom:1px solid var(--border);cursor:pointer;transition:background 0.15s;}
+.card:hover{background:var(--surface2);}
+.card.active{background:var(--surface2);border-left:3px solid var(--yellow);}
+.card-nome{font-size:13px;font-weight:500;margin-bottom:4px;line-height:1.3;}
+.card-meta{display:flex;justify-content:space-between;align-items:center;}
+.card-citta{font-size:11px;color:var(--muted);}
+.card-valore{font-size:12px;font-weight:500;color:var(--yellow);}
+.badge{font-size:10px;padding:2px 7px;border-radius:8px;font-weight:500;}
+.badge-attivo{background:rgba(46,204,113,0.15);color:var(--green);}
+.badge-pianificato{background:rgba(74,158,255,0.15);color:var(--blue);}
+.badge-completato{background:rgba(107,114,128,0.15);color:var(--muted);}
+.badge-sospeso{background:rgba(224,92,42,0.15);color:var(--red);}
+.tabs{display:flex;border-bottom:1px solid var(--border);background:var(--surface);flex-shrink:0;}
+.tab{padding:10px 18px;font-size:13px;cursor:pointer;color:var(--muted);border-bottom:2px solid transparent;transition:all 0.15s;}
+.tab.on{color:var(--yellow);border-bottom-color:var(--yellow);}
+.tab-content{display:none;flex:1;overflow:hidden;}
+.tab-content.on{display:flex;flex-direction:column;}
+#map{flex:1;min-height:0;}
+.map-toolbar{padding:8px 12px;background:var(--surface);border-bottom:1px solid var(--border);display:flex;gap:8px;align-items:center;flex-shrink:0;}
+.detail{width:320px;background:var(--surface);border-left:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden;flex-shrink:0;}
+.detail-header{padding:14px;border-bottom:1px solid var(--border);}
+.detail-nome{font-family:'Syne',sans-serif;font-size:15px;font-weight:700;margin-bottom:8px;line-height:1.3;}
+.detail-valore{font-size:22px;font-weight:700;color:var(--yellow);font-family:'Syne',sans-serif;}
+.detail-body{flex:1;overflow-y:auto;padding:14px;}
+.detail-row{display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--border);gap:12px;}
+.detail-label{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:0.4px;flex-shrink:0;}
+.detail-val{font-size:12px;color:var(--text);text-align:right;word-break:break-word;}
+.detail-empty{flex:1;display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:13px;flex-direction:column;gap:8px;}
+.table-wrap{flex:1;overflow:auto;}
+table{width:100%;border-collapse:collapse;font-size:12px;}
+th{background:var(--surface);padding:8px 12px;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:0.4px;color:var(--muted);position:sticky;top:0;border-bottom:1px solid var(--border);cursor:pointer;}
+th:hover{color:var(--text);}
+td{padding:8px 12px;border-bottom:1px solid var(--border);color:var(--text);}
+tr:hover td{background:var(--surface2);}
+.overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:1000;align-items:center;justify-content:center;padding:16px;}
+.overlay.on{display:flex;}
+.modal{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:24px;width:640px;max-width:95vw;max-height:88vh;display:flex;flex-direction:column;}
+.modal-title{font-family:'Syne',sans-serif;font-size:17px;font-weight:700;margin-bottom:6px;}
+.modal-sub{font-size:12px;color:var(--muted);margin-bottom:16px;line-height:1.6;}
+.modal-body{flex:1;overflow-y:auto;padding-right:4px;}
+.modal-footer{display:flex;justify-content:flex-end;gap:8px;margin-top:16px;padding-top:14px;border-top:1px solid var(--border);}
+.ai-chip{display:inline-block;font-size:11px;padding:3px 10px;border-radius:12px;border:1px solid var(--border);cursor:pointer;color:var(--muted);background:transparent;transition:all 0.15s;user-select:none;margin:2px;}
+.ai-chip.on{background:rgba(176,110,243,0.2);border-color:rgba(176,110,243,0.5);color:var(--purple);}
+.ai-card{background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:11px 13px;cursor:pointer;transition:border-color 0.15s;margin-bottom:7px;}
+.ai-card:hover{border-color:var(--muted);}
+.ai-card.sel{border-color:var(--purple);border-width:1.5px;}
+@keyframes spin{to{transform:rotate(360deg);}}
+.spinner{width:14px;height:14px;border:2px solid currentColor;border-top-color:transparent;border-radius:50%;animation:spin 0.7s linear infinite;display:inline-block;vertical-align:middle;}
+.toast{position:fixed;bottom:20px;right:20px;background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:10px 16px;font-size:13px;z-index:2000;transform:translateY(80px);opacity:0;transition:all 0.3s;}
+.toast.on{transform:translateY(0);opacity:1;}
+.toast.ok{border-color:var(--green);color:var(--green);}
+.toast.err{border-color:var(--red);color:var(--red);}
+.loading{position:fixed;inset:0;background:rgba(13,15,18,0.85);z-index:900;display:none;align-items:center;justify-content:center;flex-direction:column;gap:12px;}
+.loading.on{display:flex;}
+.loading-text{color:var(--muted);font-size:13px;}
+.big-spinner{width:36px;height:36px;border:3px solid var(--yellow);border-top-color:transparent;border-radius:50%;animation:spin 0.8s linear infinite;}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo-icon">🏗</div>
+  <div class="logo">Cantier<span>Track</span></div>
+  <div class="hstats">
+    <div class="hstat"><div class="hstat-val" id="h-tot">0</div><div class="hstat-lbl">Cantieri</div></div>
+    <div class="hstat"><div class="hstat-val" id="h-valore">—</div><div class="hstat-lbl">Valore tot.</div></div>
+    <div class="hstat"><div class="hstat-val" id="h-attivi">0</div><div class="hstat-lbl">Attivi</div></div>
+    <div class="hstat"><div class="hstat-val" id="h-pnrr">0</div><div class="hstat-lbl">PNRR</div></div>
+  </div>
+  <div class="header-btns">
+    <button class="btn btn-purple" onclick="openAI()">🤖 Cerca AI</button>
+    <button class="btn btn-yellow" onclick="aggiornaData()">🔄 Aggiorna dati</button>
+  </div>
+</header>
+
+<div class="app">
+  <div class="sidebar">
+    <div class="search-wrap">
+      <div class="search-rel">
+        <span class="search-icon">🔍</span>
+        <input class="search-input" id="search" placeholder="Cerca cantiere, città, stazione..." oninput="applyFilters()">
+      </div>
+    </div>
+    <div class="filters" id="stato-filters">
+      <span class="pill on" data-stato="tutti" onclick="setStato(this)">Tutti</span>
+      <span class="pill" data-stato="attivo" onclick="setStato(this)">Attivi</span>
+      <span class="pill" data-stato="pianificato" onclick="setStato(this)">Pianificati</span>
+      <span class="pill" data-stato="completato" onclick="setStato(this)">Completati</span>
+      <span class="pill" data-stato="sospeso" onclick="setStato(this)">Sospesi</span>
+    </div>
+    <div class="list-header">
+      <span id="list-count">0 cantieri</span>
+      <span id="last-update" style="font-size:10px;"></span>
+    </div>
+    <div class="list" id="list"></div>
+  </div>
+
+  <div class="main">
+    <div class="tabs">
+      <div class="tab on" onclick="switchTab('mappa',this)">🗺 Mappa</div>
+      <div class="tab" onclick="switchTab('tabella',this)">📋 Tabella</div>
+    </div>
+
+    <div class="tab-content on" id="tab-mappa" style="flex-direction:row;">
+      <div style="flex:1;display:flex;flex-direction:column;min-height:0;">
+        <div class="map-toolbar">
+          <span style="font-size:12px;color:var(--muted);">Punti sulla mappa = cantieri con coordinate disponibili</span>
+          <span id="map-count" style="font-size:11px;color:var(--yellow);margin-left:auto;"></span>
+        </div>
+        <div id="map"></div>
+      </div>
+      <div class="detail">
+        <div class="detail-empty" id="detail-empty">
+          <span style="font-size:32px;">🏗</span>
+          <span>Seleziona un cantiere dalla lista</span>
+        </div>
+        <div id="detail-content" style="display:none;flex:1;flex-direction:column;overflow:hidden;">
+          <div class="detail-header">
+            <div class="detail-nome" id="d-nome"></div>
+            <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px;">
+              <div class="detail-valore" id="d-valore"></div>
+              <span id="d-badge" class="badge"></span>
+            </div>
+            <div style="font-size:12px;color:var(--muted);" id="d-citta"></div>
+          </div>
+          <div class="detail-body" id="d-body"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="tab-content" id="tab-tabella">
+      <div class="table-wrap">
+        <table>
+          <thead><tr>
+            <th onclick="sortBy('nome')">Nome ↕</th>
+            <th onclick="sortBy('citta')">Città ↕</th>
+            <th onclick="sortBy('valore')">Valore ↕</th>
+            <th onclick="sortBy('stato')">Stato ↕</th>
+            <th onclick="sortBy('stazione')">Stazione appaltante ↕</th>
+            <th>Fonte</th>
+          </tr></thead>
+          <tbody id="tbody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL AI -->
+<div class="overlay" id="overlay-ai">
+  <div class="modal">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+      <div class="modal-title">🤖 Cerca cantieri con AI</div>
+      <button class="btn btn-outline" onclick="closeAI()" style="padding:4px 10px;">✕</button>
+    </div>
+    <div class="modal-sub">L'AI cerca cantieri reali dai giornali italiani recenti usando la ricerca web, e li aggiunge direttamente a CantierTrack.</div>
+    <div style="display:flex;gap:8px;margin-bottom:12px;">
+      <input id="ai-q" type="text" placeholder="Parola chiave opzionale (es. Milano, ospedale, autostrada...)"
+        style="flex:1;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:8px 12px;border-radius:8px;font-size:13px;outline:none;font-family:'DM Sans',sans-serif;">
+      <button class="btn btn-purple" id="btn-ai" onclick="cercaAI()">🔍 Cerca</button>
+    </div>
+    <div style="margin-bottom:14px;">
+      <span class="ai-chip on" onclick="toggleAiChip(this,'infrastrutture')">Infrastrutture</span>
+      <span class="ai-chip on" onclick="toggleAiChip(this,'edilizia pubblica')">Edilizia pubblica</span>
+      <span class="ai-chip on" onclick="toggleAiChip(this,'PNRR')">PNRR</span>
+      <span class="ai-chip" onclick="toggleAiChip(this,'strade autostrade')">Strade</span>
+      <span class="ai-chip" onclick="toggleAiChip(this,'ospedali')">Ospedali</span>
+      <span class="ai-chip" onclick="toggleAiChip(this,'scuole')">Scuole</span>
+      <span class="ai-chip" onclick="toggleAiChip(this,'ferrovie')">Ferrovie</span>
+      <span class="ai-chip" onclick="toggleAiChip(this,'porti')">Porti</span>
+      <span class="ai-chip" onclick="toggleAiChip(this,'ponti viadotti')">Ponti</span>
+      <span class="ai-chip" onclick="toggleAiChip(this,'energia rinnovabile')">Energia</span>
+    </div>
+    <div id="ai-status" style="font-size:12px;color:var(--muted);margin-bottom:10px;min-height:20px;display:flex;align-items:center;gap:8px;"></div>
+    <div class="modal-body" id="ai-results"></div>
+    <div class="modal-footer">
+      <span style="font-size:11px;color:var(--muted);flex:1;align-self:center;" id="ai-sel-count"></span>
+      <button class="btn btn-outline" onclick="aiSelAll()">✓ Tutti</button>
+      <button class="btn btn-outline" onclick="closeAI()">Chiudi</button>
+      <button class="btn btn-purple" id="btn-ai-add" onclick="aggiungiAI()" disabled>＋ Aggiungi a CantierTrack</button>
+    </div>
+  </div>
+</div>
+
+<div class="loading" id="loading">
+  <div class="big-spinner"></div>
+  <div class="loading-text" id="loading-text">Caricamento...</div>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+const API = window.location.origin;
+let allCantieri=[], filtered=[], selectedId=null;
+let statoFilter='tutti', sortField='nome', sortDir=1;
+let map, markers=[];
+let aiCantieri=[], aiSelected=new Set();
+let aiChips=new Set(['infrastrutture','edilizia pubblica','PNRR']);
+
+async function init(){
+  initMap();
+  await loadCantieri();
+}
+
+function initMap(){
+  map=L.map('map').setView([41.9,12.5],6);
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',{attribution:'© OpenStreetMap © CARTO',maxZoom:19}).addTo(map);
+}
+
+function renderMarkers(){
+  markers.forEach(m=>m.remove()); markers=[];
+  let count=0;
+  filtered.forEach(c=>{
+    if(!c.lat||!c.lng) return;
+    const col=c.stato==='attivo'?'#2ecc71':c.stato==='pianificato'?'#4a9eff':c.stato==='sospeso'?'#e05c2a':'#6b7280';
+    const icon=L.divIcon({html:`<div style="width:10px;height:10px;border-radius:50%;background:${col};border:2px solid rgba(255,255,255,0.4);box-shadow:0 0 6px ${col}66;"></div>`,iconSize:[10,10],className:''});
+    const m=L.marker([c.lat,c.lng],{icon}).addTo(map);
+    m.bindPopup(`<b>${c.nome}</b><br>${c.citta||''}<br>€${fmt(c.valore)}`);
+    m.on('click',()=>selectCantiere(c.id));
+    markers.push(m); count++;
+  });
+  document.getElementById('map-count').textContent=count>0?count+' punti':'';
+}
+
+async function loadCantieri(forceUpdate=false){
+  showLoading('Caricamento cantieri da MIT e ANAC...');
+  try{
+    const resp=await fetch(API+'/api/cantieri'+(forceUpdate?'?aggiorna=true':''));
+    if(!resp.ok) throw new Error('HTTP '+resp.status);
+    const data=await resp.json();
+    allCantieri=data.cantieri||[];
+    if(data.aggiornato){
+      const d=new Date(data.aggiornato);
+      document.getElementById('last-update').textContent=d.toLocaleDateString('it-IT')+' '+d.toLocaleTimeString('it-IT',{hour:'2-digit',minute:'2-digit'});
+    }
+    applyFilters();
+    toast('✅ '+allCantieri.length.toLocaleString('it')+' cantieri caricati','ok');
+  }catch(e){ toast('❌ '+e.message,'err'); }
+  hideLoading();
+}
+
+async function aggiornaData(){
+  showLoading('Aggiornamento dati da MIT e ANAC...');
+  try{
+    await fetch(API+'/api/aggiorna',{method:'POST'});
+    toast('⏳ Aggiornamento avviato, attendi...','');
+    await new Promise(r=>setTimeout(r,5000));
+    await loadCantieri();
+  }catch(e){ toast('❌ Errore aggiornamento','err'); }
+  hideLoading();
+}
+
+function applyFilters(){
+  const q=document.getElementById('search').value.toLowerCase();
+  filtered=allCantieri.filter(c=>{
+    if(statoFilter!=='tutti'&&c.stato!==statoFilter) return false;
+    if(q&&!`${c.nome} ${c.citta} ${c.stazione} ${c.ente||''}`.toLowerCase().includes(q)) return false;
+    return true;
+  });
+  filtered.sort((a,b)=>{
+    const av=sortField==='valore'?Number(a.valore||0):String(a[sortField]||'');
+    const bv=sortField==='valore'?Number(b.valore||0):String(b[sortField]||'');
+    return (av>bv?1:av<bv?-1:0)*sortDir;
+  });
+  renderList(); renderMarkers(); updateStats(); renderTable();
+}
+
+function setStato(el){
+  document.querySelectorAll('#stato-filters .pill').forEach(p=>p.classList.remove('on'));
+  el.classList.add('on'); statoFilter=el.dataset.stato; applyFilters();
+}
+
+function sortBy(f){ if(sortField===f) sortDir*=-1; else{sortField=f;sortDir=1;} applyFilters(); }
+
+function renderList(){
+  document.getElementById('list-count').textContent=filtered.length.toLocaleString('it')+' cantieri';
+  const el=document.getElementById('list');
+  if(!filtered.length){el.innerHTML='<div style="padding:20px;text-align:center;color:var(--muted);">Nessun cantiere trovato</div>';return;}
+  el.innerHTML=filtered.slice(0,300).map(c=>`
+    <div class="card${c.id===selectedId?' active':''}" onclick="selectCantiere(${JSON.stringify(c.id)})">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:4px;">
+        <div class="card-nome">${c.nome||'—'}</div>
+        <span class="badge badge-${c.stato||'attivo'}">${c.stato||'—'}</span>
+      </div>
+      <div class="card-meta">
+        <span class="card-citta">📍 ${c.citta||'—'}</span>
+        <span class="card-valore">${c.valore?'€'+fmt(c.valore):'—'}</span>
+      </div>
+    </div>`).join('');
+  if(filtered.length>300) el.innerHTML+=`<div style="padding:10px;text-align:center;color:var(--muted);font-size:11px;">+ altri ${(filtered.length-300).toLocaleString('it')} — usa la ricerca per filtrare</div>`;
+}
+
+function renderTable(){
+  document.getElementById('tbody').innerHTML=filtered.slice(0,500).map(c=>`<tr onclick="selectCantiere(${JSON.stringify(c.id)})" style="cursor:pointer;">
+    <td style="max-width:250px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${c.nome||''}">${c.nome||'—'}</td>
+    <td>${c.citta||'—'}</td>
+    <td style="text-align:right;color:var(--yellow);">${c.valore?'€'+fmt(c.valore):'—'}</td>
+    <td><span class="badge badge-${c.stato||'attivo'}">${c.stato||'—'}</span></td>
+    <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${c.stazione||''}">${c.stazione||'—'}</td>
+    <td style="font-size:11px;color:var(--muted);">${c.ente||c.fonte||'—'}</td>
+  </tr>`).join('');
+}
+
+function selectCantiere(id){
+  selectedId=id;
+  const c=allCantieri.find(x=>x.id===id);
+  if(!c) return;
+  document.getElementById('detail-empty').style.display='none';
+  document.getElementById('detail-content').style.display='flex';
+  document.getElementById('d-nome').textContent=c.nome||'—';
+  document.getElementById('d-valore').textContent=c.valore?'€'+fmt(c.valore):'—';
+  document.getElementById('d-citta').textContent='📍 '+(c.citta||'—')+(c.regione?', '+c.regione:'');
+  const b=document.getElementById('d-badge');
+  b.textContent=c.stato||'—'; b.className='badge badge-'+(c.stato||'attivo');
+  const rows=[['Tipo',c.tipo],['Intervento',c.tipoIntervento],['Inizio',c.inizio],
+    ['Fine prevista',c.fine_prevista],['Stazione',c.stazione],['Procedura',c.tipoProcedura],
+    ['CIG',c.cig],['CUP',c.cup],['RUP',c.rup],['Fonte',c.fonte||c.ente]];
+  document.getElementById('d-body').innerHTML=rows.filter(r=>r[1]&&r[1]!=='—').map(r=>`
+    <div class="detail-row">
+      <span class="detail-label">${r[0]}</span>
+      <span class="detail-val">${r[1]}</span>
+    </div>`).join('')+(c.url?`<div style="margin-top:10px;"><a href="${c.url}" target="_blank" style="color:var(--blue);font-size:12px;">🔗 Apri documento</a></div>`:'');
+  renderList();
+}
+
+function updateStats(){
+  const tot=allCantieri.length;
+  const val=allCantieri.reduce((s,c)=>s+(Number(c.valore)||0),0);
+  const att=allCantieri.filter(c=>c.stato==='attivo').length;
+  const pnrr=allCantieri.filter(c=>(c.nome||'').includes('🇪🇺')||(c.tipoIntervento||'').includes('PNRR')).length;
+  document.getElementById('h-tot').textContent=tot.toLocaleString('it');
+  document.getElementById('h-valore').textContent=val>=1e9?'€'+(val/1e9).toFixed(1)+'Mld':val>=1e6?'€'+(val/1e6).toFixed(0)+'M':'€'+val.toLocaleString('it');
+  document.getElementById('h-attivi').textContent=att.toLocaleString('it');
+  document.getElementById('h-pnrr').textContent=pnrr.toLocaleString('it');
+}
+
+function switchTab(name,el){
+  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('on'));
+  document.querySelectorAll('.tab-content').forEach(t=>t.classList.remove('on'));
+  el.classList.add('on'); document.getElementById('tab-'+name).classList.add('on');
+  if(name==='mappa') setTimeout(()=>map.invalidateSize(),50);
+}
+
+function openAI(){document.getElementById('overlay-ai').classList.add('on');}
+function closeAI(){document.getElementById('overlay-ai').classList.remove('on');}
+function toggleAiChip(el,val){if(aiChips.has(val)){aiChips.delete(val);el.classList.remove('on');}else{aiChips.add(val);el.classList.add('on');}}
+
+async function cercaAI(){
+  const btn=document.getElementById('btn-ai');
+  const status=document.getElementById('ai-status');
+  btn.disabled=true; aiCantieri=[]; aiSelected=new Set();
+  document.getElementById('ai-results').innerHTML='';
+  document.getElementById('btn-ai-add').disabled=true;
+  status.innerHTML='<span class="spinner" style="color:var(--purple);"></span>&nbsp;Ricerca AI in corso...';
+  try{
+    const resp=await fetch(API+'/api/ai/cerca',{
+      method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({query:document.getElementById('ai-q').value.trim(),categorie:[...aiChips]})
+    });
+    if(!resp.ok){const e=await resp.json();throw new Error(e.detail||'Errore '+resp.status);}
+    const data=await resp.json();
+    aiCantieri=data.cantieri||[];
+    aiSelected=new Set(aiCantieri.map(c=>c.id));
+    status.textContent=aiCantieri.length+' cantieri trovati';
+    renderAIResults();
+    document.getElementById('btn-ai-add').disabled=aiSelected.size===0;
+  }catch(e){status.innerHTML=`<span style="color:var(--red);">❌ ${e.message}</span>`;}
+  btn.disabled=false;
+}
+
+function renderAIResults(){
+  document.getElementById('ai-results').innerHTML=aiCantieri.map(c=>{
+    const sel=aiSelected.has(c.id);
+    const v=c.valore?'€'+(c.valore>=1e9?(c.valore/1e9).toFixed(1)+'Mld':c.valore>=1e6?(c.valore/1e6).toFixed(1)+'M':(c.valore/1000).toFixed(0)+'K'):'—';
+    return `<div class="ai-card${sel?' sel':''}" onclick="toggleAiCard('${c.id}')">
+      <div style="display:flex;justify-content:space-between;gap:10px;margin-bottom:5px;">
+        <strong style="font-size:13px;">${c.nome}</strong>
+        <span class="badge badge-${c.stato||'attivo'}" style="flex-shrink:0;">${c.stato||'—'}</span>
+      </div>
+      <div style="display:flex;gap:12px;flex-wrap:wrap;">
+        <span style="font-size:11px;color:var(--muted);">📍 ${c.citta||'—'}${c.regione?', '+c.regione:''}</span>
+        <span style="font-size:11px;color:var(--yellow);">💶 ${v}</span>
+        ${c.stazione?`<span style="font-size:11px;color:var(--muted);">🏛 ${c.stazione}</span>`:''}
+      </div>
+      ${c.descrizione?`<div style="font-size:11px;color:var(--muted);margin-top:5px;">${c.descrizione}</div>`:''}
+      ${c.fonte?`<div style="font-size:10px;opacity:0.5;margin-top:3px;">📰 ${c.fonte}</div>`:''}
+    </div>`;
+  }).join('');
+  document.getElementById('ai-sel-count').textContent=aiSelected.size+' selezionati';
+}
+
+function toggleAiCard(id){if(aiSelected.has(id))aiSelected.delete(id);else aiSelected.add(id);renderAIResults();document.getElementById('btn-ai-add').disabled=aiSelected.size===0;}
+function aiSelAll(){aiSelected=new Set(aiCantieri.map(c=>c.id));renderAIResults();document.getElementById('btn-ai-add').disabled=false;}
+
+function aggiungiAI(){
+  const toAdd=aiCantieri.filter(c=>aiSelected.has(c.id));
+  let nextId=allCantieri.length+1;
+  toAdd.forEach(c=>{c.id=nextId++;allCantieri.push(c);});
+  applyFilters(); updateStats();
+  toast('✅ '+toAdd.length+' cantieri AI aggiunti!','ok');
+  closeAI();
+}
+
+function fmt(n){n=Number(n)||0;if(n>=1e9)return(n/1e9).toFixed(1)+'Mld';if(n>=1e6)return(n/1e6).toFixed(1)+'M';if(n>=1e3)return(n/1e3).toFixed(0)+'K';return n.toLocaleString('it');}
+function showLoading(t){document.getElementById('loading').classList.add('on');document.getElementById('loading-text').textContent=t||'';}
+function hideLoading(){document.getElementById('loading').classList.remove('on');}
+function toast(msg,type){const t=document.getElementById('toast');t.textContent=msg;t.className='toast on '+(type||'');setTimeout(()=>t.className='toast',3500);}
+
+window.onload=init;
+</script>
+</body>
+</html>
