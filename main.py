@@ -24,7 +24,59 @@ def root():
 def health():
     return {"status": "ok"}
 
-class AISearchRequest(BaseModel):
+class CantierInfoRequest(BaseModel):
+    nome: str
+    cig: Optional[str] = ""
+    stazione: Optional[str] = ""
+    valore: Optional[float] = 0
+    citta: Optional[str] = ""
+
+@app.post("/api/ai/cerca-cantiere")
+async def ai_cerca_cantiere(req: CantierInfoRequest):
+    if not ANTHROPIC_API_KEY:
+        raise HTTPException(status_code=503, detail="API key Anthropic non configurata")
+
+    valore_fmt = f"€{req.valore/1e6:.1f}M" if req.valore and req.valore >= 1e6 else f"€{req.valore:,.0f}" if req.valore else "—"
+
+    prompt = f"""Cerca informazioni aggiornate su questo appalto pubblico italiano:
+
+Nome: {req.nome}
+CIG: {req.cig or "non disponibile"}
+Stazione appaltante: {req.stazione or "non disponibile"}
+Importo: {valore_fmt}
+Città: {req.citta or "non disponibile"}
+
+Cerca notizie, comunicati stampa, documenti ufficiali relativi a questo appalto.
+Trova informazioni su: imprese aggiudicatarie, progettisti/architetti coinvolti, stato avanzamento lavori, eventuali controversie o varianti.
+
+Rispondi in italiano con un breve report strutturato in HTML usando solo questi tag: <p>, <strong>, <ul>, <li>.
+Se non trovi informazioni specifiche, dillo chiaramente. Non inventare dati."""
+
+    async with httpx.AsyncClient(timeout=55) as client:
+        resp = await client.post(
+            "https://api.anthropic.com/v1/messages",
+            headers={
+                "x-api-key": ANTHROPIC_API_KEY,
+                "anthropic-version": "2023-06-01",
+                "content-type": "application/json",
+            },
+            json={
+                "model": "claude-haiku-4-5-20251001",
+                "max_tokens": 1000,
+                "tools": [{"type": "web_search_20250305", "name": "web_search"}],
+                "messages": [{"role": "user", "content": prompt}],
+            }
+        )
+
+    if not resp.is_success:
+        raise HTTPException(status_code=502, detail=f"Errore API: {resp.status_code}")
+
+    data = resp.json()
+    text_block = next((b for b in data.get("content", []) if b.get("type") == "text"), None)
+    if not text_block:
+        raise HTTPException(status_code=502, detail="Nessuna risposta dalla AI")
+
+    return {"html": text_block["text"]}
     query: Optional[str] = ""
     categorie: list[str] = ["infrastrutture", "edilizia pubblica", "PNRR"]
 
