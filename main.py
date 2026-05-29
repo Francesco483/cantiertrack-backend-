@@ -32,6 +32,7 @@ class CantierInfoRequest(BaseModel):
     stazione: Optional[str] = ""
     valore: Optional[float] = 0
     citta: Optional[str] = ""
+    cerca_articoli: Optional[bool] = False
 
 @app.post("/api/ai/cerca")
 async def ai_cerca(req: AISearchRequest):
@@ -74,45 +75,69 @@ Trova 15+ cantieri REALI con dati precisi. Rispondi SOLO con il JSON array."""
         c["ente"] = "AI News"
     return {"cantieri": cantieri, "totale": len(cantieri)}
 
+
 @app.post("/api/ai/cerca-cantiere")
 async def ai_cerca_cantiere(req: CantierInfoRequest):
     if not ANTHROPIC_API_KEY:
         raise HTTPException(status_code=503, detail="API key Anthropic non configurata")
 
-    valore_fmt = f"€{req.valore/1e6:.1f}M" if req.valore and req.valore >= 1e6 else f"€{req.valore:,.0f}" if req.valore else "—"
+    valore_fmt = (
+        f"€{req.valore/1e6:.1f}M" if req.valore and req.valore >= 1e6
+        else f"€{req.valore:,.0f}" if req.valore
+        else "—"
+    )
 
-    prompt = f"""Sei un ricercatore specializzato in appalti pubblici italiani.
+    prompt = f"""Sei un ricercatore specializzato in appalti pubblici italiani con accesso alla ricerca web.
 
-Devi trovare informazioni AGGIUNTIVE su questo appalto, che NON siano già note:
+Devi trovare ARTICOLI DI GIORNALE e notizie reali su questo appalto pubblico:
 - Nome gara: {req.nome}
 - CIG: {req.cig or "n/d"}
 - Stazione appaltante: {req.stazione or "n/d"}
 - Importo: {valore_fmt}
 - Città/luogo: {req.citta or "n/d"}
 
-Cerca specificamente:
-1. Chi ha VINTO la gara (impresa aggiudicataria o raggruppamento di imprese)
-2. Eventuali progettisti, architetti o ingegneri incaricati
-3. Notizie recenti sull'avanzamento dei lavori o inaugurazioni
-4. Eventuali problemi, ricorsi o varianti contrattuali
+ISTRUZIONI:
+1. Cerca su Google News, testate locali e nazionali italiane articoli che menzionino questa gara o questi lavori.
+2. Per ogni articolo trovato crea una voce con: titolo dell'articolo, nome della testata, data di pubblicazione, link cliccabile completo, e 1-2 righe di riassunto.
+3. Cerca anche: aggiudicatario della gara (impresa vincitrice), eventuali ricorsi al TAR, avanzamento lavori, inaugurazioni.
+4. Se trovi risultati sul portale ANAC o MIT, includili.
 
-Formato risposta in HTML con questi tag: <p>, <strong>, <ul>, <li>.
-Struttura la risposta in sezioni chiare. Se non trovi info su un punto, omettilo.
-NON ripetere i dati già noti (CIG, importo, stazione appaltante).
-Massimo 200 parole. Niente markdown o backtick."""
+Formato risposta HTML OBBLIGATORIO — usa SOLO questi tag:
+- <p> per testo normale
+- <strong> per titoli sezione  
+- <ul><li> per liste
+- <a href="URL_COMPLETO"> per ogni link — l'URL deve essere completo (https://...)
+
+Esempio formato articolo:
+<ul>
+<li><strong>Titolo articolo</strong> — <a href="https://www.testata.it/articolo">La Repubblica, 12 marzo 2025</a><br>Breve riassunto di 1-2 righe.</li>
+</ul>
+
+Se non trovi articoli specifici su questa gara, cerca notizie sui lavori in quella città/zona e sulla stazione appaltante.
+NON inventare URL. Se un URL non è verificabile, scrivi solo il testo senza link.
+Massimo 300 parole. Niente markdown o backtick."""
 
     async with httpx.AsyncClient(timeout=55) as client:
         resp = await client.post(
             "https://api.anthropic.com/v1/messages",
-            headers={"x-api-key": ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json"},
-            json={"model": "claude-haiku-4-5-20251001", "max_tokens": 1000,
-                  "tools": [{"type": "web_search_20250305", "name": "web_search"}],
-                  "messages": [{"role": "user", "content": prompt}]}
+            headers={
+                "x-api-key": ANTHROPIC_API_KEY,
+                "anthropic-version": "2023-06-01",
+                "content-type": "application/json"
+            },
+            json={
+                "model": "claude-haiku-4-5-20251001",
+                "max_tokens": 1500,
+                "tools": [{"type": "web_search_20250305", "name": "web_search"}],
+                "messages": [{"role": "user", "content": prompt}]
+            }
         )
     if not resp.is_success:
         raise HTTPException(status_code=502, detail=f"Errore API: {resp.status_code}")
+
     data = resp.json()
     text_block = next((b for b in data.get("content", []) if b.get("type") == "text"), None)
     if not text_block:
         raise HTTPException(status_code=502, detail="Nessuna risposta dalla AI")
+
     return {"html": text_block["text"]}
