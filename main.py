@@ -117,7 +117,7 @@ Se non trovi articoli specifici su questa gara, cerca notizie sui lavori in quel
 NON inventare URL. Se un URL non è verificabile, scrivi solo il testo senza link.
 Massimo 300 parole. Niente markdown o backtick."""
 
-    async with httpx.AsyncClient(timeout=55) as client:
+    async with httpx.AsyncClient(timeout=90) as client:
         resp = await client.post(
             "https://api.anthropic.com/v1/messages",
             headers={
@@ -127,7 +127,8 @@ Massimo 300 parole. Niente markdown o backtick."""
             },
             json={
                 "model": "claude-haiku-4-5-20251001",
-                "max_tokens": 1500,
+                "max_tokens": 2000,
+                "system": "Sei un ricercatore di appalti pubblici italiani. Rispondi SEMPRE direttamente in HTML, senza frasi introduttive come 'Faro una ricerca' o 'Cerchero'. Inizia subito con il contenuto trovato.",
                 "tools": [{"type": "web_search_20250305", "name": "web_search"}],
                 "messages": [{"role": "user", "content": prompt}]
             }
@@ -136,8 +137,29 @@ Massimo 300 parole. Niente markdown o backtick."""
         raise HTTPException(status_code=502, detail=f"Errore API: {resp.status_code}")
 
     data = resp.json()
-    text_block = next((b for b in data.get("content", []) if b.get("type") == "text"), None)
-    if not text_block:
+    content_blocks = data.get("content", [])
+
+    # Raccoglie TUTTI i blocchi di testo — Claude risponde in piu blocchi
+    # dopo aver usato il tool web_search internamente
+    testi = [b["text"] for b in content_blocks if b.get("type") == "text"]
+
+    if not testi:
         raise HTTPException(status_code=502, detail="Nessuna risposta dalla AI")
 
-    return {"html": text_block["text"]}
+    html_finale = "\n".join(testi).strip()
+
+    # Rimuove eventuali frasi introduttive generiche prima del vero contenuto
+    frasi_da_rimuovere = [
+        "faro una ricerca", "procedo con la ricerca", "sto cercando",
+        "effettuero una ricerca", "cerchero informazioni", "effettuo una ricerca"
+    ]
+    testo_lower = html_finale.lower()
+    for frase in frasi_da_rimuovere:
+        if frase in testo_lower:
+            for tag in ["<ul>", "<p>", "<strong>"]:
+                idx = html_finale.find(tag)
+                if idx > 0:
+                    html_finale = html_finale[idx:]
+                    break
+
+    return {"html": html_finale}
