@@ -163,3 +163,107 @@ Massimo 300 parole. Niente markdown o backtick."""
                     break
 
     return {"html": html_finale}
+
+
+class BOTRequest(BaseModel):
+    nome: str
+    cig: Optional[str] = ""
+    stazione: Optional[str] = ""
+    valore: Optional[float] = 0
+    citta: Optional[str] = ""
+    tipo: Optional[str] = ""
+    tipoIntervento: Optional[str] = ""
+    tipoProcedura: Optional[str] = ""
+
+@app.post("/api/ai/bot-ontology")
+async def ai_bot_ontology(req: BOTRequest):
+    if not ANTHROPIC_API_KEY:
+        raise HTTPException(status_code=503, detail="API key Anthropic non configurata")
+
+    valore_fmt = (
+        f"€{req.valore/1e6:.1f}M" if req.valore and req.valore >= 1e6
+        else f"€{req.valore:,.0f}" if req.valore
+        else "—"
+    )
+
+    prompt = f"""Sei un esperto di ontologie BIM e della Building Topology Ontology (BOT) W3C.
+
+Analizza questo appalto pubblico italiano e genera la struttura BOT dei lavori:
+- Nome gara: {req.nome}
+- Tipo intervento: {req.tipoIntervento or req.tipo or "n/d"}
+- Importo: {valore_fmt}
+- Città: {req.citta or "n/d"}
+- Stazione appaltante: {req.stazione or "n/d"}
+- CIG: {req.cig or "n/d"}
+
+REGOLE FONDAMENTALI:
+1. Il grafo BOT rappresenta SOLO le parti oggetto dei lavori, NON l'intero edificio/infrastruttura.
+2. Se è una nuova costruzione: includi tutta la struttura.
+3. Se è una ristrutturazione/manutenzione parziale: includi SOLO le parti toccate dai lavori.
+4. Distingui tra nodi CERTI (esplicitamente menzionati nella descrizione) e DEDOTTI (inferiti dal tipo di lavoro).
+
+Rispondi SOLO con un JSON valido con questa struttura esatta:
+{{
+  "site": {{
+    "label": "nome città o zona geografica",
+    "certo": true
+  }},
+  "building": {{
+    "label": "nome opera o edificio (max 3 parole)",
+    "certo": true
+  }},
+  "storeys": [
+    {{"label": "nome piano o zona (max 3 parole)", "certo": true}},
+    {{"label": "altro piano se presente", "certo": false}}
+  ],
+  "spaces": [
+    {{"label": "zona o ambiente (max 3 parole)", "storey_index": 0, "certo": true}},
+    {{"label": "altra zona", "storey_index": 0, "certo": false}}
+  ],
+  "elements": [
+    {{"label": "componente edilizio (max 3 parole)", "space_index": 0, "certo": true}},
+    {{"label": "altro componente", "space_index": 1, "certo": false}}
+  ],
+  "sub_elements": [
+    {{"label": "sotto-componente (max 3 parole)", "element_index": 0, "certo": false}}
+  ]
+}}
+
+Linee guida per i nodi:
+- storeys: 1-3 elementi (piani, livelli, tratte, zone geografiche dell'opera)
+- spaces: 2-5 elementi (ambienti, zone funzionali, parti dell'opera)
+- elements: 2-5 elementi (componenti costruttivi toccati dai lavori)
+- sub_elements: 0-2 elementi (sotto-componenti solo se chiaramente inferibili)
+- Etichette brevi e precise, in italiano, max 3 parole
+- Rispondi SOLO con il JSON, nessun testo prima o dopo."""
+
+    async with httpx.AsyncClient(timeout=60) as client:
+        resp = await client.post(
+            "https://api.anthropic.com/v1/messages",
+            headers={
+                "x-api-key": ANTHROPIC_API_KEY,
+                "anthropic-version": "2023-06-01",
+                "content-type": "application/json"
+            },
+            json={
+                "model": "claude-haiku-4-5-20251001",
+                "max_tokens": 1200,
+                "system": "Sei un esperto BOT/BIM. Rispondi SOLO con JSON valido, zero testo aggiuntivo.",
+                "messages": [{"role": "user", "content": prompt}]
+            }
+        )
+    if not resp.is_success:
+        raise HTTPException(status_code=502, detail=f"Errore API: {resp.status_code}")
+
+    data = resp.json()
+    text_block = next((b for b in data.get("content", []) if b.get("type") == "text"), None)
+    if not text_block:
+        raise HTTPException(status_code=502, detail="Nessuna risposta dalla AI")
+
+    text = text_block["text"].strip().replace("```json", "").replace("```", "").strip()
+    s, e = text.find("{"), text.rfind("}")
+    if s == -1 or e == -1:
+        raise HTTPException(status_code=502, detail="Formato JSON non valido")
+
+    bot_data = json.loads(text[s:e+1])
+    return bot_data
